@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: MIT
-
 pragma solidity ^0.8.18;
 
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
@@ -12,6 +11,9 @@ contract DegenToken is ERC20, ERC20Burnable {
     error ItemAlreadyRedeemed(uint256 itemId);
     error InsufficientBalance(address player, uint256 required, uint256 available);
     error ItemDoesNotExist(uint256 itemId);
+    error InvalidBurnAmount();
+    error InvalidTransferAmount();
+    error TransferFailed();
 
     address public owner;
     uint8 private _decimals = 1;
@@ -37,6 +39,8 @@ contract DegenToken is ERC20, ERC20Burnable {
     event TokenRedemption(address indexed player, uint256 itemId, string itemName, uint256 tokenAmount);
     event StoreItemAdded(uint256 indexed itemId, string name, uint256 price);
     event ItemRemovedFromStore(uint256 indexed itemId, string name);
+    event TokensBurned(address indexed burner, uint256 amount);
+    event TokensTransferred(address indexed from, address indexed to, uint256 amount);
 
     constructor(string memory name, string memory symbol) ERC20(name, symbol) {
         owner = msg.sender;
@@ -45,6 +49,41 @@ contract DegenToken is ERC20, ERC20Burnable {
     function mint(address to, uint256 amount) public onlyOwner {
         _mint(to, amount);
     }
+
+
+    function burnTokens(uint256 amount) public {
+        if (amount == 0) {
+            revert InvalidBurnAmount();
+        }
+        if (amount > balanceOf(msg.sender)) {
+            revert InsufficientBalance(msg.sender, amount, balanceOf(msg.sender));
+        }
+        
+        _burn(msg.sender, amount);
+        emit TokensBurned(msg.sender, amount);
+    }
+
+
+    function transferTokens(address recipient, uint256 amount) public returns (bool) {
+        if (recipient == address(0)) {
+            revert InvalidTransferAmount();
+        }
+        if (amount == 0) {
+            revert InvalidTransferAmount();
+        }
+        if (amount > balanceOf(msg.sender)) {
+            revert InsufficientBalance(msg.sender, amount, balanceOf(msg.sender));
+        }
+
+        bool success = transfer(recipient, amount);
+        if (!success) {
+            revert TransferFailed();
+        }
+
+        emit TokensTransferred(msg.sender, recipient, amount);
+        return true;
+    }
+
 
     function addStoreItem(string memory name, uint256 price) public onlyOwner returns (uint256) {
         uint256 newItemId = itemCounter;
@@ -60,6 +99,7 @@ contract DegenToken is ERC20, ERC20Burnable {
         emit StoreItemAdded(newItemId, name, price);
         return newItemId;
     }
+
 
     function redeemTokenForItem(uint256 itemId) public {
         StoreItem storage item = storeItems[itemId];
@@ -88,6 +128,7 @@ contract DegenToken is ERC20, ERC20Burnable {
         emit TokenRedemption(msg.sender, itemId, item.name, itemPrice);
     }
 
+
     function removeItemFromStore(uint256 itemId) internal {
         if (!storeItems[itemId].exists) {
             revert ItemDoesNotExist(itemId);
@@ -100,6 +141,7 @@ contract DegenToken is ERC20, ERC20Burnable {
         emit ItemRemovedFromStore(itemId, itemName);
     }
 
+
     function getStoreItem(uint256 itemId) public view returns (
         string memory name, 
         uint256 price, 
@@ -110,13 +152,11 @@ contract DegenToken is ERC20, ERC20Burnable {
         return (item.name, item.price, item.exists, item.isRedeemed);
     }
 
-    function transferTokens(address recipient, uint256 amount) public returns (bool) {
-        return transfer(recipient, amount);
-    }
 
     function checkBalance(address account) public view returns (uint256) {
         return balanceOf(account);
     }
+
 
     function decimals() public view override returns (uint8) {
         return _decimals;
